@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import json
 import re
 import sys
 import threading
@@ -29,6 +28,7 @@ def parser():
     ap.add_argument("--logs", type=Path, default=ROOT / "logs")
     ap.add_argument("--validate", action="store_true", help="validate settings and timeline then exit")
     ap.add_argument("--scan", action="store_true", help="scan BLE devices and exit")
+    ap.add_argument("--verbose", action="store_true", help="터미널에 통신 등 상세 로그도 표시")
     return ap
 
 def reader(loop, queue):
@@ -72,7 +72,7 @@ async def run(args):
             raise ValueError("Participant/trial: use 1..40 letters, numbers, _ or -; do not enter real names")
     inputs = load_input_script(args.input_script)
     queue = asyncio.Queue()
-    log = EventLog(args.logs, args.participant, args.trial, args.condition, route["route_id"])
+    log = EventLog(args.logs, args.participant, args.trial, args.condition, route["route_id"], verbose=args.verbose)
     log.snapshot(settings, route)
     engine = Engine(args.condition, log)
     transport = (SimTransport if args.simulate else BleTransport)(settings, queue, log)
@@ -115,7 +115,7 @@ async def run(args):
             return
         log.origin = time.monotonic()
         engine.start()
-        print("T=0 START - start both synchronized videos now.", flush=True)
+        print("영상 두 개의 재생 기준을 지금의 0초에 맞춰주세요.", flush=True)
         if inputs:
             script_task = asyncio.create_task(playback())
 
@@ -123,9 +123,10 @@ async def run(args):
         log.write("session_open", details={"simulation": args.simulate, "demo": route.get("demo", False)})
         led.initialize()
         await transport.connect()
-        print(f"Logs: {log.directory}\nREADY. Commands: start | status | mark TEXT | abort | quit", flush=True)
+        print(f"로그 폴더: {log.directory}\n명령: start 시작 | status 상태 | mark 내용 메모 | abort 중단 | quit 종료", flush=True)
+        log.write("session_ready")
         if args.simulate:
-            print("Simulation contact commands: left press / left release / right press / right release", flush=True)
+            print("모의 전극 입력: left press / left release / right press / right release", flush=True)
         if args.autostart:
             start()
         else:
@@ -156,20 +157,20 @@ async def run(args):
                     exit_code = 2 if log.origin is not None else 0
                     break
                 elif value == "status":
-                    print(json.dumps(engine.state(), ensure_ascii=False), flush=True)
+                    log.write("operator_status", after=engine.state())
                 elif value.startswith("mark "):
                     log.write("operator_marker", details=value[5:])
                 elif args.simulate and value in [f"{s} {a}" for s in p.SIDES for a in ("press", "release")]:
                     side, action = value.split()
                     transport.inject(side, action == "press")
                 else:
-                    log.write("operator_ignored", reason="unknown_command")
+                    log.write("operator_ignored", input=value, reason="unknown_command")
     except asyncio.CancelledError:
         engine.abort("interrupted")
         exit_code = 2
     except Exception as error:
         engine.abort(str(error))
-        print(f"STOPPED: {error}", file=sys.stderr, flush=True)
+        print(f"실험 중단: {error}", file=sys.stderr, flush=True)
         exit_code = 2
     finally:
         if script_task:

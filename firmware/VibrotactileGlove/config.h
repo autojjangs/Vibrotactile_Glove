@@ -3,7 +3,7 @@
 // Each glove needs a separate build: LEFT=0, RIGHT=1.
 // You can edit these values or provide -D flags at compile time.
 #ifndef GLOVE_SIDE
-#define GLOVE_SIDE 0
+#define GLOVE_SIDE 1
 #endif
 
 // ESP32-C3 SuperMini: GPIO3 selected for the cloth contact input.
