@@ -1,0 +1,44 @@
+{
+  "ble": {
+    "left_mac": "70:AF:09:34:C3:A6",
+    "right_mac": "70:AF:09:33:09:1E",
+    "command_timeout_s": 1.5,
+    "heartbeat_s": 1
+  },
+  "haptics": {
+    "preview": {
+      "on_ms": 200,
+      "off_ms": 800,
+      "count": 2
+    },
+    "feedback": {
+      "on_ms": 600,
+      "off_ms": 200
+    }
+  },
+  "led": {
+    "count": 20,
+    "gpio": 18,
+    "dma": 10,
+    "channel": 0,
+    "brightness": 50,
+    "color": [
+      255,
+      130,
+      0
+    ],
+    "left_indices": [
+      17,
+      18,
+      19
+    ],
+    "right_indices": [
+      0,
+      1,
+      2
+    ],
+    "on_ms": 600,
+    "off_ms": 200
+  },
+  "max_dispatch_lag_s": 0.5
+}

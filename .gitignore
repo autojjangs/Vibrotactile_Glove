@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Experiment sessions and local Arduino tools
+logs/
+.arduino/
+
+# Locally generated verification output (test inputs stay in tests/)
+/validation/

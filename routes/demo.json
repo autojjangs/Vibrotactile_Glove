@@ -1,0 +1,25 @@
+{
+  "route_id": "DEMO_ONLY",
+  "ready": true,
+  "demo": true,
+  "duration_s": 10,
+  "events": [
+    {
+      "id": "demo_turn",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 1,
+      "auto_on_s": 3,
+      "pass_s": 4
+    },
+    {
+      "id": "demo_straight",
+      "direction": "right",
+      "expected_action": "straight",
+      "cue_s": 4.5,
+      "preview_s": 5,
+      "auto_on_s": 7,
+      "pass_s": 8
+    }
+  ]
+}
