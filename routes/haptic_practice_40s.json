@@ -1,0 +1,41 @@
+{
+  "route_id": "HAPTIC_PRACTICE_40S",
+  "ready": true,
+  "demo": true,
+  "duration_s": 40,
+  "description": "40-second bench practice: four 10-second rounds, left/right/left/right, with 6 seconds of automatic indication when not cancelled. Not a scored research trial.",
+  "events": [
+    {
+      "id": "round_1",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 1,
+      "auto_on_s": 3,
+      "pass_s": 9
+    },
+    {
+      "id": "round_2",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 11,
+      "auto_on_s": 13,
+      "pass_s": 19
+    },
+    {
+      "id": "round_3",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 21,
+      "auto_on_s": 23,
+      "pass_s": 29
+    },
+    {
+      "id": "round_4",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 31,
+      "auto_on_s": 33,
+      "pass_s": 39
+    }
+  ]
+}
