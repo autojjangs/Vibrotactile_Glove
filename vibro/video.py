@@ -36,6 +36,11 @@ def configuration(settings, route):
     c = dict(settings.get("video", {}))
     c.setdefault("media_dir", "media")
     c.setdefault("mpv", "mpv")
+    # The Pi's single-video software decode test passed; test the pair the same way.
+    # Keep this default in code so existing per-machine screen settings need no edit.
+    c.setdefault("hwdec", "no")
+    if c["hwdec"] not in ("no", "auto", "auto-copy"):
+        raise ValueError("video.hwdec: use no, auto, or auto-copy")
     c.setdefault("screens", {"driving": 0, "navigation": 1})
     c.setdefault("audio", {"navigation": True, "driving": True})
     c.setdefault("prepare_timeout_s", 30.0)
@@ -142,8 +147,9 @@ def check_samples(samples, now, origin, duration, config):
 
 
 class MpvClient:
-    def __init__(self, role, path, config, fault):
+    def __init__(self, role, path, config, fault, log_path=None):
         self.role, self.path, self.config, self.fault = role, path, config, fault
+        self.log_path = Path(log_path) if log_path is not None else None
         self.process = self.writer = self.reader_task = self.stderr_task = None
         self.pending = {}
         self.serial = 0
@@ -162,12 +168,14 @@ class MpvClient:
             "--terminal=no", "--input-terminal=no", "--input-default-bindings=no",
             "--input-vo-keyboard=no", "--input-cursor=no", "--osc=no", "--osd-level=0",
             "--fullscreen=no", "--autofit=480x360", "--keepaspect=yes", "--panscan=0",
-            "--hwdec=auto", "--video-sync=audio", "--speed=1",
+            f"--hwdec={self.config.get('hwdec', 'no')}", "--video-sync=audio", "--speed=1",
             f"--screen={self.config['screens'][self.role]}",
             f"--fs-screen={self.config['screens'][self.role]}",
             f"--title=Vibrotactile - {self.role}",
             f"--input-ipc-client=fd://{child.fileno()}",
         ]
+        if self.log_path is not None:
+            command.append(f"--log-file={self.log_path.resolve()}")
         if not self.config["audio"][self.role]:
             command.append("--audio=no")
         command += ["--", str(self.path.resolve())]
@@ -287,7 +295,11 @@ class VideoPair:
     def __init__(self, settings, route, log, fault):
         self.config, self.paths = configuration(settings, route)
         self.duration, self.log, self.fault = route["duration_s"], log, fault
-        self.players = {role: MpvClient(role, path, self.config, fault) for role, path in self.paths.items()}
+        directory = getattr(log, "directory", None)
+        self.log_paths = {role: Path(directory) / f"mpv_{role}.log" if directory is not None else None
+                          for role in ROLES}
+        self.players = {role: MpvClient(role, path, self.config, fault, log_path=self.log_paths[role])
+                        for role, path in self.paths.items()}
         self.monitor_task = None
         self.origin = None
         self.closing = False
@@ -303,8 +315,10 @@ class VideoPair:
             digest = await asyncio.to_thread(self._hash, player.path)
             self.log.write("video_file_ready", details={"role": role, "path": str(player.path),
                            "sha256": digest, "screen_index": self.config["screens"][role],
-                           "audio": self.config["audio"][role], **info})
-        self.log.write("video_ready")
+                           "audio": self.config["audio"][role], "hwdec": self.config["hwdec"],
+                           "mpv_log": str(self.log_paths[role]) if self.log_paths[role] is not None else None,
+                           **info})
+        self.log.write("video_ready", details={"hwdec": self.config["hwdec"]})
 
     @staticmethod
     def _hash(path):

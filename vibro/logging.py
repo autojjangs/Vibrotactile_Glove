@@ -1,5 +1,7 @@
 import csv
 import json
+import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -115,8 +117,6 @@ def format_experiment_event(row):
         category, message = "종료", "자유 체험 종료 · 로그 저장 완료"
         if row.get("result") != "completed":
             message += f" · 중단 사유: {reason}"
-    elif event == "manual_off_missed":
-        category, message = "주의", f"{hand}수동 소등 누락 · 지점 통과 시까지 방향지시등이 켜져 있음"
     elif event == "point_pass":
         category = "통과"
         if (row.get("before") or {}).get("lit"):
@@ -124,7 +124,11 @@ def format_experiment_event(row):
         else:
             message = f"{hand}안내 지점 통과 · 입력 구간 종료"
     elif event == "video_ready":
-        category, message = "영상", "두 영상 준비 완료 · 영상창이 앞에 있으면 Alt+Tab으로 터미널에 돌아와 start 입력"
+        mode = details.get("hwdec")
+        description = {"no": "소프트웨어 재생 (가속 끔)", "auto": "하드웨어 가속 자동 선택",
+                       "auto-copy": "하드웨어 가속 자동 선택 (복사 방식)"}.get(mode)
+        playback = f" · {description}" if description else ""
+        category, message = "영상", f"두 영상 준비 완료{playback} · 영상창이 앞에 있으면 Alt+Tab으로 터미널에 돌아와 start 입력"
     elif event == "video_displays":
         category, message = "영상", f"출력 화면 확인 · 주행 {details.get('driving')} / 내비 {details.get('navigation')}"
     elif event == "video_start_requested":
@@ -203,15 +207,45 @@ def format_experiment_event(row):
     return f"[{clock}] [{category}]{point} {message}"
 
 
+def sudo_log_owner():
+    """Keep newly created logs writable by the user who invoked sudo."""
+    if not sys.platform.startswith("linux") or os.geteuid() != 0:
+        return None
+    try:
+        uid, gid = int(os.environ["SUDO_UID"]), int(os.environ["SUDO_GID"])
+    except (KeyError, ValueError):
+        return None
+    return (uid, gid) if uid > 0 and gid >= 0 else None
+
+
 class EventLog:
     def __init__(self, directory, participant, trial, condition, route, echo=True, verbose=False):
         root = Path(directory)
+        self.owner = sudo_log_owner()
+        root_created = not root.exists()
         root.mkdir(parents=True, exist_ok=True)
+        if root_created:
+            self._set_owner(root)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
         self.directory = root / f"{stamp}_{participant}_{trial}_{condition}"
-        self.directory.mkdir()
-        self.handle = (self.directory / "events.csv").open("x", encoding="utf-8-sig", newline="")
-        self.readable_handle = (self.directory / "experiment.log").open("x", encoding="utf-8", newline="")
+        try:
+            self.directory.mkdir()
+        except PermissionError as error:
+            raise PermissionError(error.errno, f"로그 저장 폴더에 쓸 권한이 없습니다. 소유권을 확인하세요: {root}",
+                                  str(self.directory)) from error
+        self._set_owner(self.directory)
+        self.handle = self.readable_handle = None
+        try:
+            self.handle = (self.directory / "events.csv").open("x", encoding="utf-8-sig", newline="")
+            self.readable_handle = (self.directory / "experiment.log").open("x", encoding="utf-8", newline="")
+            if self.owner:
+                for handle in (self.handle, self.readable_handle):
+                    os.fchown(handle.fileno(), *self.owner)
+        except BaseException:
+            for handle in (self.handle, self.readable_handle):
+                if handle:
+                    handle.close()
+            raise
         self.writer = csv.DictWriter(self.handle, FIELDS)
         self.writer.writeheader()
         self.handle.flush()
@@ -219,6 +253,10 @@ class EventLog:
         self.origin = None
         self.echo = echo
         self.verbose = verbose
+
+    def _set_owner(self, path):
+        if self.owner:
+            os.chown(path, *self.owner, follow_symlinks=False)
 
     def write(self, event, received=None, **fields):
         now = time.monotonic() if received is None else received
@@ -250,6 +288,7 @@ class EventLog:
         (self.directory / "session.json").write_text(
             json.dumps({"metadata": self.context, "settings": settings, "route": route},
                        ensure_ascii=False, indent=2), encoding="utf-8")
+        self._set_owner(self.directory / "session.json")
 
     def close(self):
         self.readable_handle.close()

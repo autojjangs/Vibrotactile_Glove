@@ -74,8 +74,13 @@ class VideoSelectionTest(unittest.TestCase):
             config, paths = video.configuration(settings, route)
             self.assertEqual(paths["navigation"], root / "n.mp4")
             self.assertEqual(config["audio"], {"navigation": True, "driving": True})
+            self.assertEqual(config["hwdec"], "no")
+            for mode in ("no", "auto", "auto-copy"):
+                configured, _ = video.configuration({"video": settings["video"] | {"hwdec": mode}}, route)
+                self.assertEqual(configured["hwdec"], mode)
             for change in ({"screens": {"navigation": 0, "driving": 0}},
-                           {"poll_s": float("nan")}, {"max_desync_s": 0}):
+                           {"poll_s": float("nan")}, {"max_desync_s": 0},
+                           {"hwdec": True}, {"hwdec": "unknown"}):
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     video.configuration({"video": settings["video"] | change}, route)
             with self.assertRaises(FileNotFoundError):
@@ -114,8 +119,9 @@ class FakePlayer:
     instances = []
     same_display = False
 
-    def __init__(self, role, path, config, fault):
+    def __init__(self, role, path, config, fault, log_path=None):
         self.role, self.path = role, path
+        self.log_path = log_path
         self.paused, self.closed, self.started = True, False, None
         self.instances.append(self)
 
@@ -154,6 +160,8 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
         self.settings = {"video": {"media_dir": self.temp.name}}
         self.route = {"duration_s": 20, "videos": {"navigation": "n.mp4", "driving": "d.mp4"}}
         self.log = MemoryLog()
+        self.log.directory = Path(self.temp.name) / "session_logs"
+        self.log.directory.mkdir()
         self.faults = []
         FakePlayer.instances = []
         FakePlayer.same_display = False
@@ -167,6 +175,10 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
             try:
                 await pair.prepare()
                 self.assertTrue(all(p.paused for p in pair.players.values()))
+                self.assertEqual({p.log_path.name for p in pair.players.values()},
+                                 {"mpv_navigation.log", "mpv_driving.log"})
+                self.assertTrue(all(p.log_path.parent == self.log.directory for p in pair.players.values()))
+                self.assertEqual(self.log.rows[-1]["details"]["hwdec"], "no")
                 origin = await pair.start()
                 self.assertAlmostEqual(origin, pair.players["navigation"].started, delta=0.01)
                 await asyncio.sleep(0.02)
@@ -201,6 +213,34 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(all(p.paused for p in pair.players.values()))
             finally:
                 await pair.close()
+
+
+class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
+    async def test_both_players_use_software_decode_audio_and_distinct_diagnostic_files(self):
+        from unittest.mock import AsyncMock
+        with tempfile.TemporaryDirectory() as folder:
+            for role in video.ROLES:
+                with self.subTest(role=role):
+                    path = Path(folder) / f"{role} video.mp4"
+                    log_path = Path(folder) / f"mpv_{role}.log"
+                    config = {"hwdec": "no", "screens": {"driving": 0, "navigation": 1},
+                              "audio": {"navigation": True, "driving": True}, "mpv": "mpv"}
+                    client = video.MpvClient(role, path, config, self.fail, log_path=log_path)
+                    spawn = AsyncMock(side_effect=RuntimeError("launch boundary"))
+                    with patch.object(video.shutil, "which", return_value="mpv"), \
+                         patch.object(video, "desktop_process_options", return_value={}), \
+                         patch.object(video.asyncio, "create_subprocess_exec", spawn):
+                        with self.assertRaisesRegex(RuntimeError, "launch boundary"):
+                            await client.open()
+                    command = spawn.call_args.args
+                    self.assertIn("--hwdec=no", command)
+                    self.assertNotIn("--audio=no", command)
+                    self.assertIn("--pause=yes", command)
+                    self.assertIn("--video-sync=audio", command)
+                    self.assertIn(f"--fs-screen={config['screens'][role]}", command)
+                    self.assertIn(f"--log-file={log_path.resolve()}", command)
+                    self.assertEqual(command[-2:], ("--", str(path.resolve())))
+                    self.assertEqual(len(spawn.call_args.kwargs["pass_fds"]), 1)
 
 
 class MpvIPCTest(unittest.IsolatedAsyncioTestCase):

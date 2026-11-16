@@ -53,8 +53,7 @@ class Engine:
             self.record("auto_on", received=at, after=self.state())
             return [("led", point["direction"], True), ("haptic", point["direction"], p.FEEDBACK)]
         if kind == "pass":
-            if self.condition == "baseline" and self.lit:
-                self.record("manual_off_missed", received=at, result="recorded")
+            # Passing ends the indicator and feedback normally in both conditions.
             self.record("point_pass", received=at, before=self.state())
             side = point["direction"]
             self.active = None

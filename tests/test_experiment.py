@@ -79,20 +79,32 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(self.log.rows[-1]["reason"], "wrong_hand")
         self.assertFalse(self.engine.lit)
 
-    def test_pass_logs_missed_manual_off_and_resets(self):
+    def test_pass_automatically_stops_manual_indicator_and_feedback(self):
         self.begin()
         self.press()
-        self.engine.scheduled("pass", TURN, 6)
-        self.assertIn("manual_off_missed", [x["event"] for x in self.log.rows])
+        effects = self.engine.scheduled("pass", TURN, 6)
+        self.assertEqual(effects, [("led", "left", False), ("haptic", "left", p.STOP)])
+        self.assertNotIn("manual_off_missed", [x["event"] for x in self.log.rows])
+        self.assertEqual(self.log.rows[-1]["event"], "point_pass")
+        self.assertTrue(self.log.rows[-1]["before"]["lit"])
         self.assertIsNone(self.engine.active)
         self.assertFalse(self.engine.lit)
+        self.assertFalse(self.engine.allowed)
+        self.release()
+        self.assertEqual(self.press(at=6.2), [])
+        self.assertEqual(self.log.rows[-1]["reason"], "outside_point")
 
-    def test_manual_off_does_not_log_miss(self):
+    def test_manual_off_before_pass_remains_available(self):
         self.begin()
         self.press()
         self.release()
-        self.press()
+        effects = self.press()
+        self.assertEqual(effects, [("led", "left", False), ("haptic", "left", p.STOP)])
+        self.assertFalse(self.engine.lit)
+        self.assertEqual(self.log.rows[-1]["result"], "off")
         self.engine.scheduled("pass", TURN, 6)
+        self.assertFalse(self.engine.lit)
+        self.assertFalse(self.log.rows[-1]["before"]["lit"])
         self.assertNotIn("manual_off_missed", [x["event"] for x in self.log.rows])
 
     def test_cancel_is_latched_on_any_trial_type(self):
