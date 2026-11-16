@@ -171,9 +171,9 @@ class ReadableLogTest(unittest.TestCase):
         from vibro.logging import format_experiment_event
         for mode, description in (("no", "소프트웨어 재생 (가속 끔)"),
                                   ("auto", "하드웨어 가속 자동 선택")):
-            line = format_experiment_event({"event": "video_ready", "details": {"hwdec": mode, "force_render": True}})
+            line = format_experiment_event({"event": "video_ready", "details": {"hwdec": mode}})
             self.assertIn(description, line)
-            self.assertIn("화면 갱신 유지", line)
+            self.assertNotIn("화면 갱신 유지", line)
             self.assertIn("start", line)
 
     def test_verbose_adds_diagnostics_only_to_console(self):
