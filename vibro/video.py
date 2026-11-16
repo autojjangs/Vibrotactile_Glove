@@ -168,6 +168,8 @@ class MpvClient:
             "--terminal=no", "--input-terminal=no", "--input-default-bindings=no",
             "--input-vo-keyboard=no", "--input-cursor=no", "--osc=no", "--osd-level=0",
             "--fullscreen=no", "--autofit=480x360", "--keepaspect=yes", "--panscan=0",
+            # Both displays must keep rendering even if window visibility is misreported.
+            "--force-render=yes",
             f"--hwdec={self.config.get('hwdec', 'no')}", "--video-sync=audio", "--speed=1",
             f"--screen={self.config['screens'][self.role]}",
             f"--fs-screen={self.config['screens'][self.role]}",
@@ -316,9 +318,10 @@ class VideoPair:
             self.log.write("video_file_ready", details={"role": role, "path": str(player.path),
                            "sha256": digest, "screen_index": self.config["screens"][role],
                            "audio": self.config["audio"][role], "hwdec": self.config["hwdec"],
+                           "force_render": True,
                            "mpv_log": str(self.log_paths[role]) if self.log_paths[role] is not None else None,
                            **info})
-        self.log.write("video_ready", details={"hwdec": self.config["hwdec"]})
+        self.log.write("video_ready", details={"hwdec": self.config["hwdec"], "force_render": True})
 
     @staticmethod
     def _hash(path):

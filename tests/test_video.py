@@ -179,6 +179,7 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
                                  {"mpv_navigation.log", "mpv_driving.log"})
                 self.assertTrue(all(p.log_path.parent == self.log.directory for p in pair.players.values()))
                 self.assertEqual(self.log.rows[-1]["details"]["hwdec"], "no")
+                self.assertTrue(self.log.rows[-1]["details"]["force_render"])
                 origin = await pair.start()
                 self.assertAlmostEqual(origin, pair.players["navigation"].started, delta=0.01)
                 await asyncio.sleep(0.02)
@@ -234,6 +235,7 @@ class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
                             await client.open()
                     command = spawn.call_args.args
                     self.assertIn("--hwdec=no", command)
+                    self.assertIn("--force-render=yes", command)
                     self.assertNotIn("--audio=no", command)
                     self.assertIn("--pause=yes", command)
                     self.assertIn("--video-sync=audio", command)

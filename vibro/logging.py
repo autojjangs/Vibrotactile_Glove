@@ -128,6 +128,8 @@ def format_experiment_event(row):
         description = {"no": "소프트웨어 재생 (가속 끔)", "auto": "하드웨어 가속 자동 선택",
                        "auto-copy": "하드웨어 가속 자동 선택 (복사 방식)"}.get(mode)
         playback = f" · {description}" if description else ""
+        if details.get("force_render"):
+            playback += " · 화면 갱신 유지"
         category, message = "영상", f"두 영상 준비 완료{playback} · 영상창이 앞에 있으면 Alt+Tab으로 터미널에 돌아와 start 입력"
     elif event == "video_displays":
         category, message = "영상", f"출력 화면 확인 · 주행 {details.get('driving')} / 내비 {details.get('navigation')}"
