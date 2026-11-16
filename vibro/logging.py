@@ -12,7 +12,8 @@ FIELDS = ("utc_time", "elapsed_s", "received_monotonic_s", "participant", "trial
           "device_ms", "sequence", "reference", "details")
 
 SIDE_NAMES = {"left": "왼쪽", "right": "오른쪽"}
-CONDITION_NAMES = {"baseline": "Baseline · 수동 점등", "proposed": "Proposed · 자동 점등/취소"}
+CONDITION_NAMES = {"baseline": "Baseline · 수동 점등", "proposed": "Proposed · 자동 점등/취소",
+                   "free": "자유 체험 (시간 제한 없음)"}
 INPUT_REASONS = {
     "duplicate_state": "이미 같은 접촉 상태여서 새 입력이 아님",
     "trial_not_running": "실험 진행 중이 아님",
@@ -34,7 +35,7 @@ ERROR_EVENTS = {
 DETAIL_EVENTS = {
     "ble_rx", "ble_command", "sim_rx", "sim_command", "sim_hold",
     "timeline_event", "preview_requested", "led_driver_on", "led_driver_off",
-    "operator_input",
+    "operator_input", "video_sync_sample", "video_file_ready",
 }
 
 
@@ -92,9 +93,28 @@ def format_experiment_event(row):
     elif event == "auto_suppressed":
         category, message = "취소", f"{hand}취소 유지 → 자동 점등하지 않음"
     elif event == "haptic_applied":
-        if details.get("mode") != p.FEEDBACK:
+        if details.get("mode") == p.PREVIEW and row["condition"] == "free":
+            category, message = "진동", f"{hand}사전 안내 진동 시작"
+        elif details.get("mode") == p.FEEDBACK:
+            category, message = "진동", f"{hand}점등 피드백 진동 시작"
+        else:
             return None
-        category, message = "진동", f"{hand}점등 피드백 진동 시작"
+    elif event == "free_ready":
+        category, message = "체험", "준비 완료 (READY) · 1/2 사전 안내 · 3/4 점등 · 0 끄기 · q 종료"
+    elif event == "free_indicator_on":
+        category, message = "체험", f"{hand}방향지시등 점등 · 직접 끌 때까지 유지"
+    elif event == "free_outputs_off":
+        category, message = "체험", "양쪽 방향지시등·진동 정지"
+    elif event == "free_preview_finished":
+        category, message = "체험", f"{hand}사전 안내 종료 · 다시 선택하면 반복"
+    elif event == "free_unknown_command":
+        category, message = "명령", f"알 수 없는 명령: {row.get('input', '')} · 1/2/3/4/0/q 또는 help 사용"
+    elif event == "free_error":
+        category, message = "오류", f"자유 체험 중단 · {reason}"
+    elif event == "free_closed":
+        category, message = "종료", "자유 체험 종료 · 로그 저장 완료"
+        if row.get("result") != "completed":
+            message += f" · 중단 사유: {reason}"
     elif event == "manual_off_missed":
         category, message = "주의", f"{hand}수동 소등 누락 · 지점 통과 시까지 방향지시등이 켜져 있음"
     elif event == "point_pass":
@@ -103,6 +123,18 @@ def format_experiment_event(row):
             message = f"{hand}안내 지점 통과 → 자동 소등 · 진동 정지"
         else:
             message = f"{hand}안내 지점 통과 · 입력 구간 종료"
+    elif event == "video_ready":
+        category, message = "영상", "두 영상 준비 완료 · 영상창이 앞에 있으면 Alt+Tab으로 터미널에 돌아와 start 입력"
+    elif event == "video_displays":
+        category, message = "영상", f"출력 화면 확인 · 주행 {details.get('driving')} / 내비 {details.get('navigation')}"
+    elif event == "video_start_requested":
+        category, message = "영상", "두 영상 재생 시작 요청"
+    elif event == "video_started":
+        category, message = "영상", f"재생 시작 확인 · 주행−내비 재생 시각 차이 {details.get('driving_minus_navigation_s', 0):+.3f}초"
+    elif event == "video_fault":
+        category, message = "오류", f"영상 재생 중단 · {reason}"
+    elif event == "video_closed":
+        category, message = "영상", "두 영상 종료"
     elif event == "video_cue_marker":
         category, message = "영상", "직진 단서 예정 시각 (시간표 기준)"
     elif event == "session_open":
@@ -111,6 +143,8 @@ def format_experiment_event(row):
         mode = "모의 실행" if details.get("simulation") else "장비 실행"
         if details.get("demo"):
             mode += " · 데모 시간표"
+        if details.get("video_playback"):
+            mode += " · 영상 자동 재생"
         message = (f"{condition} | 참가자 {row['participant']} | 시행 {row['trial']} | "
                    f"경로 {row['route']} | {mode}")
     elif event == "ble_scan_start":

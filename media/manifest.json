@@ -1,0 +1,102 @@
+[
+  {
+    "file": "경로1 내비 영상.mp4",
+    "route": 1,
+    "kind": "navigation",
+    "bytes": 30758429,
+    "duration_s": 279.448,
+    "metadata": {
+      "ffmpeg_version": "9.0.2-essentials_build-www.gyan.dev built with gcc 16.2.0 (Rev3, Built by MSYS2 project)",
+      "codec": "h264",
+      "pix_fmt": "yuv420p(progressive)",
+      "audio_codec": "aac",
+      "fps": 24.0,
+      "source_size": [
+        668,
+        668
+      ],
+      "size": [
+        668,
+        668
+      ],
+      "rotate": 0,
+      "duration": 279.42
+    },
+    "sha256": "9da4a5ed19ffbe9ebf61da91ee6e5ca7b10ddf69ed5eaff223e4886c3816fa50"
+  },
+  {
+    "file": "경로1 주행 영상.mp4",
+    "route": 1,
+    "kind": "driving",
+    "bytes": 72223323,
+    "duration_s": 279.417,
+    "metadata": {
+      "ffmpeg_version": "9.0.2-essentials_build-www.gyan.dev built with gcc 16.2.0 (Rev3, Built by MSYS2 project)",
+      "codec": "h264",
+      "pix_fmt": "yuv420p(progressive)",
+      "audio_codec": "aac",
+      "fps": 24.0,
+      "source_size": [
+        1280,
+        720
+      ],
+      "size": [
+        1280,
+        720
+      ],
+      "rotate": 0,
+      "duration": 279.42
+    },
+    "sha256": "6863de6761f36a8fd5f1f07afdb4f51c2389878a34b8fd2bde09982a9e6944bc"
+  },
+  {
+    "file": "경로2 내비 영상.mp4",
+    "route": 2,
+    "kind": "navigation",
+    "bytes": 30513696,
+    "duration_s": 263.96,
+    "metadata": {
+      "ffmpeg_version": "9.0.2-essentials_build-www.gyan.dev built with gcc 16.2.0 (Rev3, Built by MSYS2 project)",
+      "codec": "h264",
+      "pix_fmt": "yuv420p(progressive)",
+      "audio_codec": "aac",
+      "fps": 24.0,
+      "source_size": [
+        668,
+        668
+      ],
+      "size": [
+        668,
+        668
+      ],
+      "rotate": 0,
+      "duration": 263.94
+    },
+    "sha256": "6a988ed0e7db9a1c4b5a92d397cffc630272f884b34b1f232c28b4a6fa0520ab"
+  },
+  {
+    "file": "경로2 주행 영상.mp4",
+    "route": 2,
+    "kind": "driving",
+    "bytes": 68574131,
+    "duration_s": 263.917,
+    "metadata": {
+      "ffmpeg_version": "9.0.2-essentials_build-www.gyan.dev built with gcc 16.2.0 (Rev3, Built by MSYS2 project)",
+      "codec": "h264",
+      "pix_fmt": "yuv420p(progressive)",
+      "audio_codec": "aac",
+      "fps": 24.0,
+      "source_size": [
+        1280,
+        720
+      ],
+      "size": [
+        1280,
+        720
+      ],
+      "rotate": 0,
+      "duration": 263.92
+    },
+    "sha256": "886711a7a24f5d81d23827f0c0f98208757108d45a2b39749c44ad04148f2467"
+  }
+]

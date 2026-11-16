@@ -40,5 +40,25 @@
     "on_ms": 600,
     "off_ms": 200
   },
-  "max_dispatch_lag_s": 0.5
+  "max_dispatch_lag_s": 0.5,
+  "video": {
+    "enabled": true,
+    "media_dir": "media",
+    "mpv": "mpv",
+    "screens": {
+      "driving": 0,
+      "navigation": 1
+    },
+    "audio": {
+      "navigation": true,
+      "driving": true
+    },
+    "prepare_timeout_s": 30.0,
+    "start_timeout_s": 5.0,
+    "command_timeout_s": 1.0,
+    "poll_s": 0.1,
+    "max_desync_s": 0.2,
+    "max_clock_error_s": 0.2,
+    "max_sample_rtt_s": 0.1
+  }
 }

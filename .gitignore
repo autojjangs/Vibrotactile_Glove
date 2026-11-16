@@ -225,3 +225,8 @@ logs/
 
 # Locally generated verification output (test inputs stay in tests/)
 /validation/
+
+# Local experiment videos are transferred separately from Git.
+/media/*
+!/media/README.md
+!/media/manifest.json

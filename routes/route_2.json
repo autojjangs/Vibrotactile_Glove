@@ -1,7 +1,84 @@
 {
   "route_id": "route_2",
-  "ready": false,
+  "ready": true,
   "demo": false,
-  "duration_s": null,
-  "events": []
+  "duration_s": 263.917,
+  "time_reference": "navigation_video_start",
+  "videos": {
+    "navigation": "경로2 내비 영상.mp4",
+    "driving": "경로2 주행 영상.mp4"
+  },
+  "start_location": "첨융(2과기)",
+  "end_location": "융교 앞 버스정류장",
+  "source": {
+    "workbook": "실험영상_타임스탬프_작성본.xlsx",
+    "sheet": "경로 2",
+    "sha256": "eb68791080dd27971a2520d9d3ff3d8268f29b28afd8104b58d8ba3686957b78",
+    "duration_basis": "navigation_video_end_confirmed_by_user",
+    "cue_basis": "worksheet_column_E_confirmed_by_user"
+  },
+  "events": [
+    {
+      "id": "R2_01",
+      "location": "학정 사거리 (첫 번째)",
+      "direction": "right",
+      "expected_action": "straight",
+      "preview_s": 37,
+      "auto_on_s": 41,
+      "pass_s": 45.5,
+      "cue_s": 32,
+      "notes": "기준 44.000초 / 우회전 TTS\n대기 39.000~41.000초"
+    },
+    {
+      "id": "R2_02",
+      "location": "예체능대학 사거리",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 74,
+      "auto_on_s": 78,
+      "pass_s": 82.5,
+      "notes": "기준 81.000초 / 좌회전 TTS\n대기 76.000~78.000초"
+    },
+    {
+      "id": "R2_03",
+      "location": "농구장 삼거리",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 113,
+      "auto_on_s": 117,
+      "pass_s": 121.5,
+      "notes": "기준 120.000초 / 좌회전 TTS\n대기 115.000~117.000초"
+    },
+    {
+      "id": "R2_04",
+      "location": "학정 사거리 (두 번째)",
+      "direction": "left",
+      "expected_action": "straight",
+      "preview_s": 152,
+      "auto_on_s": 156,
+      "pass_s": 160.5,
+      "cue_s": 141,
+      "notes": "기준 159.000초 / 좌회전 TTS\n대기 154.000~156.000초"
+    },
+    {
+      "id": "R2_05",
+      "location": "약대 골목",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 196,
+      "auto_on_s": 200,
+      "pass_s": 204.5,
+      "notes": "기준 203.000초 / 우회전 TTS\n대기 198.000~200.000초"
+    },
+    {
+      "id": "R2_06",
+      "location": "융교 사거리",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 235,
+      "auto_on_s": 239,
+      "pass_s": 243.5,
+      "notes": "기준 242.000초 / 우회전 TTS\n대기 237.000~239.000초"
+    }
+  ]
 }

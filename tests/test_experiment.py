@@ -147,10 +147,14 @@ class ConfigurationTest(unittest.TestCase):
     def test_settings_and_macs(self):
         settings = load_settings(ROOT / "config/settings.json")
         self.assertEqual(validate_addresses(settings)[0], "70:AF:09:34:C3:A6")
-    def test_real_routes_cannot_accidentally_run(self):
-        for name in ("route_1", "route_2"):
-            with self.assertRaises(ValueError):
-                load_route(ROOT / f"routes/{name}.json")
+    def test_draft_route_cannot_accidentally_run(self):
+        draft = load_route(ROOT / "routes/demo.json")
+        draft["ready"] = False
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "draft_route.json"
+            path.write_text(json.dumps(draft), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "not finalized"):
+                load_route(path)
     def test_demo_events_sorted(self):
         items = timeline(load_route(ROOT / "routes/demo.json"))
         self.assertEqual([x[0] for x in items], sorted(x[0] for x in items))

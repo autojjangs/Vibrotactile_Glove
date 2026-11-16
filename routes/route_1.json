@@ -1,7 +1,84 @@
 {
   "route_id": "route_1",
-  "ready": false,
+  "ready": true,
   "demo": false,
-  "duration_s": null,
-  "events": []
+  "duration_s": 279.417,
+  "time_reference": "navigation_video_start",
+  "videos": {
+    "navigation": "경로1 내비 영상.mp4",
+    "driving": "경로1 주행 영상.mp4"
+  },
+  "start_location": "기숙사 사거리",
+  "end_location": "예체능대학 사거리",
+  "source": {
+    "workbook": "실험영상_타임스탬프_작성본.xlsx",
+    "sheet": "경로 1",
+    "sha256": "eb68791080dd27971a2520d9d3ff3d8268f29b28afd8104b58d8ba3686957b78",
+    "duration_basis": "navigation_video_end_confirmed_by_user",
+    "cue_basis": "worksheet_column_E_confirmed_by_user"
+  },
+  "events": [
+    {
+      "id": "R1_01",
+      "location": "테니스장 사거리",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 23,
+      "auto_on_s": 27,
+      "pass_s": 31.5,
+      "notes": "기준 30.000초 / 우회전 TTS\n대기 25.000~27.000초"
+    },
+    {
+      "id": "R1_02",
+      "location": "창보 사거리",
+      "direction": "left",
+      "expected_action": "straight",
+      "preview_s": 59,
+      "auto_on_s": 63,
+      "pass_s": 67.5,
+      "cue_s": 41,
+      "notes": "기준 66.000초 / 좌회전 TTS\n대기 61.000~63.000초"
+    },
+    {
+      "id": "R1_03",
+      "location": "융교 사거리",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 107,
+      "auto_on_s": 111,
+      "pass_s": 115.5,
+      "notes": "기준 114.000초 / 좌회전 TTS\n대기 109.000~111.000초"
+    },
+    {
+      "id": "R1_04",
+      "location": "약대 사거리",
+      "direction": "left",
+      "expected_action": "turn",
+      "preview_s": 141,
+      "auto_on_s": 145,
+      "pass_s": 149.5,
+      "notes": "기준 148.000초 / 좌회전 TTS\n대기 143.000~145.000초"
+    },
+    {
+      "id": "R1_05",
+      "location": "4공 사거리",
+      "direction": "right",
+      "expected_action": "straight",
+      "preview_s": 182,
+      "auto_on_s": 186,
+      "pass_s": 190.5,
+      "cue_s": 176,
+      "notes": "기준 189.000초 / 우회전 TTS\n대기 184.000~186.000초"
+    },
+    {
+      "id": "R1_06",
+      "location": "체대 앞 삼거리",
+      "direction": "right",
+      "expected_action": "turn",
+      "preview_s": 219,
+      "auto_on_s": 223,
+      "pass_s": 227.5,
+      "notes": "기준 226.000초 / 우회전 TTS\n대기 221.000~223.000초"
+    }
+  ]
 }
