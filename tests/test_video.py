@@ -216,7 +216,7 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
 
 
 class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
-    async def test_both_players_use_software_decode_audio_and_distinct_diagnostic_files(self):
+    async def test_both_players_use_native_wayland_opengl_and_keep_audio_and_diagnostics(self):
         from unittest.mock import AsyncMock
         with tempfile.TemporaryDirectory() as folder:
             for role in video.ROLES:
@@ -228,12 +228,16 @@ class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
                     client = video.MpvClient(role, path, config, self.fail, log_path=log_path)
                     spawn = AsyncMock(side_effect=RuntimeError("launch boundary"))
                     with patch.object(video.shutil, "which", return_value="mpv"), \
-                         patch.object(video, "desktop_process_options", return_value={}), \
+                         patch.object(video, "desktop_process_options", return_value={"env": {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}}), \
                          patch.object(video.asyncio, "create_subprocess_exec", spawn):
                         with self.assertRaisesRegex(RuntimeError, "launch boundary"):
                             await client.open()
                     command = spawn.call_args.args
                     self.assertIn("--hwdec=no", command)
+                    self.assertIn("--vo=gpu", command)
+                    self.assertIn("--gpu-api=opengl", command)
+                    self.assertIn("--gpu-context=wayland", command)
+                    self.assertFalse(any("vulkan" in arg for arg in command))
                     self.assertFalse(any(arg.startswith("--force-render") for arg in command))
                     self.assertNotIn("--audio=no", command)
                     self.assertIn("--pause=yes", command)
@@ -245,6 +249,41 @@ class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
 
 
 class MpvIPCTest(unittest.IsolatedAsyncioTestCase):
+    async def test_render_error_aborts_even_when_ipc_and_playback_clock_still_respond(self):
+        faults = []
+        client = video.MpvClient("navigation", Path("n.mp4"), {"command_timeout_s": 0.2}, faults.append)
+        reader = asyncio.StreamReader()
+        receipt = asyncio.get_running_loop().create_future()
+        client.pending[77] = receipt
+        task = asyncio.create_task(client._receive(reader))
+        messages = [
+            {"event": "log-message", "level": "warn", "prefix": "vo/gpu", "text": "nonfatal notice"},
+            {"event": "log-message", "level": "error", "prefix": "vd", "text": "decoder diagnostic"},
+            {"request_id": 77, "error": "success", "data": 12.0},
+        ]
+        try:
+            for message in messages:
+                reader.feed_data((json.dumps(message) + "\n").encode())
+            await asyncio.wait_for(receipt, 1)
+            self.assertEqual(faults, [])
+            receipt = asyncio.get_running_loop().create_future()
+            client.pending[78] = receipt
+            failure = {"event": "log-message", "level": "error", "prefix": "vo/gpu/libplacebo",
+                       "text": "vk->CreateSwapchainKHR(...): VK_ERROR_OUT_OF_HOST_MEMORY"}
+            for message in (failure, failure, {"request_id": 78, "error": "success", "data": 13.0}):
+                reader.feed_data((json.dumps(message) + "\n").encode())
+            result, _ = await asyncio.wait_for(receipt, 1)
+            self.assertEqual(result, 13.0)
+            self.assertEqual(len(faults), 1)
+            self.assertIn("navigation: 영상 출력 오류", faults[0])
+            self.assertIn("VK_ERROR_OUT_OF_HOST_MEMORY", faults[0])
+            with self.assertRaisesRegex(video.MpvError, "영상 출력 오류"):
+                await client.get("time-pos")
+        finally:
+            client.closing = True
+            reader.feed_eof()
+            await asyncio.wait_for(task, 1)
+
     async def test_interleaved_event_and_out_of_order_responses_are_correlated(self):
         async def serve(reader, writer):
             first = json.loads(await reader.readline())

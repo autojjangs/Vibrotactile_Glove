@@ -1,5 +1,15 @@
 # 검증 기록
 
+## 2026-11-16: 확인된 Vulkan 출력 오류에 대한 OpenGL 지정
+
+- 사용자 로그 사진에서 vo/gpu/libplacebo의 CreateSwapchainKHR 실패, VK_ERROR_OUT_OF_HOST_MEMORY 및 Failed (re)creating swapchain! 반복을 확인.
+- 이는 Vulkan 화면 출력 버퍼 생성 실패의 직접 증거이며 RAM 총량 부족 또는 그 하위 원인까지 확정한 것은 아님.
+- 양쪽 mpv에 --vo=gpu --gpu-api=opengl 지정. Wayland 세션은 --gpu-context=wayland로 유지하고 X11 세션에서만 x11egl 사용.
+- 강제 갱신 옵션은 계속 제거 상태. 소프트웨어 디코딩, 화면 배정, 오디오, 실험 타임라인은 유지.
+- mpv error 로그를 IPC로 구독하고 vo/ 출력 모듈의 error/fatal을 시행 중단 사유로 전달. 같은 플레이어의 반복 오류는 최초 1회만 전달.
+- 자동 검사 70개 통과: 양쪽 native Wayland/OpenGL 실행 인자, Vulkan 미선택, 출력 오류 발생 중 재생 시간이 계속 응답하는 경우의 중단 요청, 준비 문구 포함.
+- 실제 Pi의 OpenGL 재생 및 전체 화면 동시 출력 성공 여부는 아직 확인 필요.
+
 ## 2026-11-16: 강제 화면 갱신 변경 원복
 
 - 사용자에게서 화면 갱신 유지 변경 이후 기존에 재생되던 주행 영상까지 재생되지 않는다는 보고를 받음.

@@ -155,12 +155,15 @@ class MpvClient:
         self.serial = 0
         self.closing = False
         self.stderr_tail = ""
+        self.gpu_context = None
+        self.render_error = None
 
     async def open(self):
         executable = shutil.which(self.config["mpv"])
         if not executable:
             raise RuntimeError("mpv가 없습니다. 라즈베리파이에서 sudo apt install mpv 로 설치하세요.")
         options = desktop_process_options()
+        self.gpu_context = "wayland" if options["env"].get("WAYLAND_DISPLAY") else "x11egl"
         parent, child = socket.socketpair()
         command = [
             executable, "--no-config", "--load-scripts=no", "--ytdl=no",
@@ -168,6 +171,9 @@ class MpvClient:
             "--terminal=no", "--input-terminal=no", "--input-default-bindings=no",
             "--input-vo-keyboard=no", "--input-cursor=no", "--osc=no", "--osd-level=0",
             "--fullscreen=no", "--autofit=480x360", "--keepaspect=yes", "--panscan=0",
+            # The Pi reported Vulkan swapchain allocation failures during playback.
+            # Select native Wayland/EGL on its Wayland desktop; do not probe Vulkan.
+            "--vo=gpu", "--gpu-api=opengl", f"--gpu-context={self.gpu_context}",
             f"--hwdec={self.config.get('hwdec', 'no')}", "--video-sync=audio", "--speed=1",
             f"--screen={self.config['screens'][self.role]}",
             f"--fs-screen={self.config['screens'][self.role]}",
@@ -189,6 +195,7 @@ class MpvClient:
             reader, self.writer = await asyncio.open_connection(sock=parent)
             self.reader_task = asyncio.create_task(self._receive(reader))
             self.stderr_task = asyncio.create_task(self._stderr())
+            await self.request("request_log_messages", "error")
         except BaseException:
             parent.close()
             child.close()
@@ -198,11 +205,26 @@ class MpvClient:
         while chunk := await self.process.stderr.read(1024):
             self.stderr_tail = (self.stderr_tail + chunk.decode("utf-8", "replace"))[-4096:]
 
+    def _handle_player_log(self, message):
+        level = message.get("level")
+        prefix = str(message.get("prefix", ""))
+        text = str(message.get("text", "")).strip()
+        if level not in ("error", "fatal"):
+            return
+        self.stderr_tail = (self.stderr_tail + f"[{prefix}] {text}\n")[-4096:]
+        # A progressing audio clock does not prove that video rendering works.
+        if (prefix == "vo" or prefix.startswith("vo/")) and not self.closing and self.render_error is None:
+            self.render_error = f"{self.role}: 영상 출력 오류 [{prefix}] {text[:800]}"
+            self.fault(self.render_error)
+
     async def _receive(self, reader):
         error = None
         try:
             while line := await reader.readline():
                 message = json.loads(line)
+                if message.get("event") == "log-message":
+                    self._handle_player_log(message)
+                    continue
                 future = self.pending.get(message.get("request_id"))
                 if future is not None and not future.done():
                     if message.get("error") == "success":
@@ -218,10 +240,12 @@ class MpvClient:
             for future in list(self.pending.values()):
                 if not future.done():
                     future.set_exception(failure)
-            if not self.closing:
+            if not self.closing and self.render_error is None:
                 self.fault(str(failure))
 
     async def request(self, *command):
+        if self.render_error is not None:
+            raise MpvError(self.render_error)
         if self.writer is None or self.writer.is_closing():
             raise MpvError(f"{self.role}: player is not connected")
         self.serial += 1
@@ -253,6 +277,8 @@ class MpvClient:
     async def ready(self):
         deadline = time.monotonic() + self.config["prepare_timeout_s"]
         while time.monotonic() < deadline:
+            if self.render_error is not None:
+                raise MpvError(self.render_error)
             if self.process.returncode is not None:
                 raise RuntimeError(f"{self.role}: mpv 실행 실패: {self.stderr_tail[-1200:]}")
             try:
@@ -261,7 +287,8 @@ class MpvClient:
                 if duration and size and paused is True and position is not None:
                     if abs(float(position)) > 0.05:
                         raise RuntimeError(f"{self.role}: 영상이 0초에서 준비되지 않음")
-                    return {"duration_s": duration, "video": size}
+                    return {"duration_s": duration, "video": size,
+                            "requested_renderer": {"vo": "gpu", "gpu_api": "opengl", "gpu_context": self.gpu_context}}
             except MpvError:
                 pass
             await asyncio.sleep(0.05)
@@ -318,7 +345,7 @@ class VideoPair:
                            "audio": self.config["audio"][role], "hwdec": self.config["hwdec"],
                            "mpv_log": str(self.log_paths[role]) if self.log_paths[role] is not None else None,
                            **info})
-        self.log.write("video_ready", details={"hwdec": self.config["hwdec"]})
+        self.log.write("video_ready", details={"hwdec": self.config["hwdec"], "gpu_api": "opengl"})
 
     @staticmethod
     def _hash(path):
