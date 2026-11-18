@@ -17,7 +17,9 @@ class WindowViewTest(unittest.TestCase):
     def test_instructions_track_actual_manual_and_proposed_state(self):
         self.assertIn("선택", window.presentation(self.state())["title"])
         self.assertIn("맞대", window.presentation(self.state(active=True))["title"])
-        self.assertIn("다시", window.presentation(self.state(active=True, lit=True))["instruction"])
+        manual = window.presentation(self.state(active=True, lit=True))
+        self.assertIn("다시 맞대도 켜진 상태를 유지", manual["instruction"])
+        self.assertIn("통과 시 자동", manual["instruction"])
         cancel = window.presentation(self.state(active=True, condition="proposed", cancelled=True))
         self.assertIn("취소했어요", cancel["title"])
         lit = window.presentation(self.state(active=True, condition="proposed", lit=True))

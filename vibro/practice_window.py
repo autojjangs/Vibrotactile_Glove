@@ -20,10 +20,10 @@ def presentation(state):
         title, instruction = "자동 점등을 취소했어요", "이번 회차는 켜지지 않아요. 전극을 떼고 다음 회차를 기다리세요."
     elif state["lit"]:
         title = f"{side} 방향지시등 켜짐"
-        instruction = ("전극을 떼었다 다시 맞대면 꺼져요." if manual else
+        instruction = ("다시 맞대도 켜진 상태를 유지해요. 통과 시 자동으로 꺼져요." if manual else
                        "반자동은 켜진 뒤에는 취소할 수 없어요. 통과 시 자동으로 꺼져요.")
     elif manual:
-        title, instruction = f"{side} 전극을 맞대 보세요", "맞대면 켜지고, 떼었다 다시 맞대면 꺼져요."
+        title, instruction = f"{side} 전극을 맞대 보세요", "한 번 맞대면 켜져요. 이후 다시 맞대도 유지되고, 통과 시 자동으로 꺼져요."
     else:
         title, instruction = f"{side} 자동 점등 대기", "취소하려면 지금 전극을 맞대세요. 가만히 있으면 자동으로 켜져요."
     elapsed = state.get("elapsed_s", 0)
@@ -149,7 +149,7 @@ def main():
                                relief="flat", bd=0, padx=8, pady=12, font=(font, 16, "bold"))
             button.grid(row=0, column=column, sticky="ew", padx=4)
             buttons[key] = button
-    button_row(1, [("b", "수동 · 직접 켜고 끄기"), ("p", "반자동 · 자동 점등 / 취소")])
+    button_row(1, [("b", "수동 · 직접 켜기"), ("p", "반자동 · 자동 점등 / 취소")])
     button_row(2, [("1", "←  왼쪽 연습 시작"), ("2", "오른쪽 연습 시작  →")])
 
     contacts = tk.Frame(root, bg="#eef2f7")

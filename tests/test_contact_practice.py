@@ -46,7 +46,7 @@ class ContactControlsTest(unittest.IsolatedAsyncioTestCase):
     def inputs(self):
         return [row for row in self.log.rows if row["event"] == "input"]
 
-    async def test_manual_both_sides_toggle_preempts_preview_and_pass_turns_off(self):
+    async def test_manual_both_sides_latch_preempts_preview_and_pass_turns_off(self):
         for side, key in (("left", "1"), ("right", "2")):
             await self.controls.command(key)
             await self.drain()
@@ -56,12 +56,17 @@ class ContactControlsTest(unittest.IsolatedAsyncioTestCase):
             commands = [r for r in self.log.rows if r["event"] == "sim_command"]
             self.assertEqual(commands[-1]["details"]["opcode"], p.FEEDBACK)
             self.assertNotIn(side, self.transport.tasks)  # remaining preview stopped
+            blink_task = self.led.task
             await self.touch(side, False)
             self.assertEqual(self.led.direction, side)
             await self.touch(side, True)
-            self.assertIsNone(self.led.direction)
+            self.assertEqual(self.led.direction, side)
+            self.assertIs(self.led.task, blink_task)
+            self.assertEqual(self.inputs()[-1]["reason"], "already_manual_on")
+            self.assertIn("점등 유지", self.controls.view_state()["message"])
             await self.touch(side, False)
             await self.touch(side, True)
+            self.assertEqual([r for r in self.log.rows if r["event"] == "sim_command"], commands)
             await self.controls.advance(point["pass_s"])
             self.assertIsNone(self.led.direction)
             self.assertIsNone(self.controls.engine.active)
@@ -69,7 +74,7 @@ class ContactControlsTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.transport.tasks)
             await self.touch(side, False)
         self.assertEqual([r["result"] for r in self.inputs() if r["input"] == "contact"],
-                         ["on", "off", "on"] * 2)
+                         ["on", "ignored", "ignored"] * 2)
 
     async def test_early_held_and_wrong_hand_contacts_do_not_activate(self):
         await self.touch("left", True)
@@ -236,14 +241,16 @@ class ContactEntryTest(unittest.IsolatedAsyncioTestCase):
                 with (folder / "events.csv").open(encoding="utf-8-sig", newline="") as handle:
                     rows = list(csv.DictReader(handle))
                 inputs = [r for r in rows if r["event"] == "input"]
-                self.assertEqual([r["result"] for r in inputs], ["on", "recorded", "off", "recorded"])
+                self.assertEqual([r["result"] for r in inputs], ["on", "recorded", "ignored", "recorded"])
+                self.assertEqual(inputs[2]["reason"], "already_manual_on")
                 self.assertTrue(all(r["trial"] == "CONTACT_PRACTICE" for r in rows))
                 self.assertEqual(rows[-1]["event"], "practice_closed")
                 snapshot = json.loads((folder / "session.json").read_text(encoding="utf-8"))
                 self.assertFalse(snapshot["route"]["scored"])
                 readable = (folder / "experiment.log").read_text(encoding="utf-8")
                 self.assertIn("수동 점등", readable)
-                self.assertIn("수동 소등", readable)
+                self.assertIn("점등 유지", readable)
+                self.assertNotIn("수동 소등", readable)
                 self.assertIn("전극 연습 종료", readable)
                 self.assertNotIn("영상 기준 0초", readable)
 

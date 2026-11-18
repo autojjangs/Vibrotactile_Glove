@@ -61,15 +61,16 @@ class RulesTest(unittest.TestCase):
         self.engine.packet(self.packet(p.HAPTIC, p.PREVIEW, ref=41), 1.01)
         self.assertFalse(self.engine.allowed)
 
-    def test_hold_is_not_a_second_toggle(self):
+    def test_hold_and_recontact_keep_manual_indicator_on(self):
         self.begin()
         self.press()
         self.assertEqual(self.press(), [])
         self.assertTrue(self.engine.lit)
         self.assertEqual(self.log.rows[-1]["reason"], "duplicate_state")
         self.release()
-        self.press()
-        self.assertFalse(self.engine.lit)
+        self.assertEqual(self.press(), [])
+        self.assertTrue(self.engine.lit)
+        self.assertEqual(self.log.rows[-1]["reason"], "already_manual_on")
 
     def test_wrong_hand_and_outside_window_are_logged(self):
         self.press()
@@ -94,17 +95,19 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(self.press(at=6.2), [])
         self.assertEqual(self.log.rows[-1]["reason"], "outside_point")
 
-    def test_manual_off_before_pass_remains_available(self):
+    def test_manual_recontact_does_not_stop_or_restart_outputs_before_pass(self):
         self.begin()
         self.press()
         self.release()
         effects = self.press()
+        self.assertEqual(effects, [])
+        self.assertTrue(self.engine.lit)
+        self.assertEqual(self.log.rows[-1]["result"], "ignored")
+        self.assertEqual(self.log.rows[-1]["reason"], "already_manual_on")
+        effects = self.engine.scheduled("pass", TURN, 6)
         self.assertEqual(effects, [("led", "left", False), ("haptic", "left", p.STOP)])
         self.assertFalse(self.engine.lit)
-        self.assertEqual(self.log.rows[-1]["result"], "off")
-        self.engine.scheduled("pass", TURN, 6)
-        self.assertFalse(self.engine.lit)
-        self.assertFalse(self.log.rows[-1]["before"]["lit"])
+        self.assertTrue(self.log.rows[-1]["before"]["lit"])
         self.assertNotIn("manual_off_missed", [x["event"] for x in self.log.rows])
 
     def test_cancel_is_latched_on_any_trial_type(self):

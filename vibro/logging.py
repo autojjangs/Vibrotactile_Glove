@@ -23,6 +23,7 @@ INPUT_REASONS = {
     "before_first_vibration": "첫 사전 안내 진동이 시작되기 전",
     "wrong_hand": "안내 방향과 다른 손",
     "already_cancelled": "이미 취소됨 · 취소 상태 유지",
+    "already_manual_on": "이미 수동 점등됨 · 점등 유지 · 통과 시 자동 소등",
     "after_automatic_on": "이미 자동 점등됨 · 점등 후에는 취소 불가",
 }
 ERROR_EVENTS = {
@@ -52,8 +53,10 @@ def format_status(state, condition):
         phase, window = "진행 중", "취소 완료"
     elif condition == "proposed" and state.get("lit"):
         phase, window = "진행 중", "자동 점등 후 취소 불가"
+    elif condition == "baseline" and state.get("lit"):
+        phase, window = "진행 중", "점등 유지 · 재접촉 소등 불가 · 통과 시 자동 소등"
     else:
-        phase, window = "진행 중", "수동 점등/소등 가능" if condition == "baseline" else "자동 점등 취소 가능"
+        phase, window = "진행 중", "수동 점등 가능" if condition == "baseline" else "자동 점등 취소 가능"
     light = "켜짐" if state.get("lit") else "꺼짐"
     return f"{phase} | 지점: {state.get('point') or '-'} | 방향지시등: {light} | 입력: {window}"
 
@@ -88,7 +91,7 @@ def format_experiment_event(row):
         message = f"{hand}{action} → {outcome}"
     elif event == "input_window_open":
         category = "안내"
-        action = "수동 점등/소등 가능" if row["condition"] == "baseline" else "자동 점등 취소 가능"
+        action = "수동 점등 가능" if row["condition"] == "baseline" else "자동 점등 취소 가능"
         message = f"{hand}사전 안내 시작 · {action}"
     elif event == "auto_on":
         category, message = "점등", f"{hand}방향지시등 자동 점등"
@@ -104,10 +107,10 @@ def format_experiment_event(row):
     elif event == "practice_ready":
         category, message = "연습", "준비 완료 (READY) · 전극을 떼고 1(왼쪽)/2(오른쪽) 입력 · b 수동 / p 반자동"
     elif event == "practice_mode":
-        mode = "수동: 접촉으로 켜고, 떼었다 다시 접촉해 끄기" if row["condition"] == "baseline" else "반자동: 자동 점등 전에 접촉해 취소 / 가만히 있으면 점등"
+        mode = "수동: 접촉으로 켜기 · 재접촉 시 유지 · 통과 시 자동 소등" if row["condition"] == "baseline" else "반자동: 자동 점등 전에 접촉해 취소 / 가만히 있으면 점등"
         category, message = "연습", f"방식 선택 · {mode} · 1/2로 회차 시작"
     elif event == "practice_round_begin":
-        instruction = "사전 진동 뒤 전극으로 점등·소등" if row["condition"] == "baseline" else f"사전 진동 뒤 {details['auto_on_s']:g}초 전 접촉하면 취소"
+        instruction = "사전 진동 뒤 전극으로 점등 · 재접촉해도 유지" if row["condition"] == "baseline" else f"사전 진동 뒤 {details['auto_on_s']:g}초 전 접촉하면 취소"
         category, message = "연습", f"{hand}회차 시작 · {instruction} · {details['pass_s']:g}초에 통과·자동 소등"
     elif event == "practice_round_end":
         category, message = "연습", f"{hand}통과·자동 소등 · 회차 종료 · 1/2/r로 다시 연습"

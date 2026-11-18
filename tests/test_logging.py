@@ -78,7 +78,7 @@ class ReadableLogTest(unittest.TestCase):
                 log.write("input", side="left", input="contact", result="on",
                           before={"lit": False}, after={"lit": True}, device_ms=1200)
                 log.write("input", side="left", input="release", result="recorded", reason="release_no_action")
-                log.write("input", side="left", input="contact", result="off")
+                log.write("input", side="left", input="contact", result="ignored", reason="already_manual_on")
                 with (log.directory / "events.csv").open(encoding="utf-8-sig", newline="") as handle:
                     rows = list(csv.DictReader(handle))
                 readable = (log.directory / "experiment.log").read_text(encoding="utf-8")
@@ -90,7 +90,9 @@ class ReadableLogTest(unittest.TestCase):
                 self.assertEqual(len(readable.splitlines()), 3)
                 self.assertIn("전극 접촉 → 수동 점등", readable)
                 self.assertIn("전극 떼기", readable)
-                self.assertIn("전극 접촉 → 수동 소등", readable)
+                self.assertIn("점등 유지", readable)
+                self.assertEqual(rows[4]["reason"], "already_manual_on")
+                self.assertNotIn("수동 소등", readable)
                 self.assertNotIn("ble_command", readable)
                 self.assertNotIn("ble_rx", readable)
             finally:
@@ -188,6 +190,7 @@ class ReadableLogTest(unittest.TestCase):
                 self.assertIn("ble_command", output.getvalue())
                 self.assertNotIn("ble_command", readable)
                 self.assertIn("방향지시등: 켜짐", readable)
-                self.assertIn("수동 점등/소등 가능", readable)
+                self.assertIn("재접촉 소등 불가", readable)
+                self.assertIn("통과 시 자동 소등", readable)
             finally:
                 log.close()

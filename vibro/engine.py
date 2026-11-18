@@ -101,10 +101,12 @@ class Engine:
         elif packet.side != self.active["direction"]:
             reason = "wrong_hand"
         elif self.condition == "baseline":
-            self.lit = not self.lit
-            result = "on" if self.lit else "off"
-            effects = [("led", packet.side, self.lit),
-                       ("haptic", packet.side, p.FEEDBACK if self.lit else p.STOP)]
+            if self.lit:
+                reason = "already_manual_on"
+            else:
+                self.lit = True
+                result = "on"
+                effects = [("led", packet.side, True), ("haptic", packet.side, p.FEEDBACK)]
         elif self.cancelled:
             reason = "already_cancelled"
         elif self.lit:
