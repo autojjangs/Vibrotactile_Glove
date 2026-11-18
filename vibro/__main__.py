@@ -23,7 +23,9 @@ def parser():
     ap.add_argument("--participant", default="PILOT")
     ap.add_argument("--trial", default="01")
     ap.add_argument("--simulate", action="store_true", help="no BLE or LED hardware")
-    ap.add_argument("--free", action="store_true", help="시간 제한 없는 진동·방향지시등 자유 체험")
+    practice = ap.add_mutually_exclusive_group()
+    practice.add_argument("--free", action="store_true", help="시간 제한 없는 진동·방향지시등 자유 체험")
+    practice.add_argument("--practice", action="store_true", help="반복 가능한 전극·진동·방향지시등 조작 연습")
     ap.add_argument("--allow-demo", action="store_true", help="explicitly allow synthetic timeline on hardware for bench checks")
     ap.add_argument("--autostart", action="store_true", help="simulation only")
     ap.add_argument("--input-script", type=Path, help="simulation only; timed contact/release JSON")
@@ -64,6 +66,11 @@ def load_input_script(path):
     return values
 
 async def run(args):
+    if args.practice:
+        if args.scan or args.validate or args.autostart or args.input_script or args.allow_demo or args.videos:
+            raise ValueError("--practice cannot be combined with scan/validate/autostart/input-script/allow-demo/videos")
+        from .contact_practice import run as practice_run
+        return await practice_run(args, reader)
     if args.free:
         if args.scan or args.validate or args.autostart or args.input_script or args.allow_demo or args.videos:
             raise ValueError("--free cannot be combined with scan/validate/autostart/input-script/allow-demo")
@@ -231,8 +238,8 @@ async def scan():
 def main():
     args = parser().parse_args()
     try:
-        if args.free and args.scan:
-            raise ValueError("--free cannot be combined with --scan")
+        if (args.free or args.practice) and args.scan:
+            raise ValueError("--free / --practice cannot be combined with --scan")
         return asyncio.run(scan() if args.scan else run(args))
     except (ValueError, KeyError, OSError, ImportError) as error:
         print(f"Configuration/setup error: {error}", file=sys.stderr)

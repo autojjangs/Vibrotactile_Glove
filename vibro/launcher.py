@@ -14,13 +14,13 @@ ASSIGNMENTS = {
     "2b": ("2", "baseline"),
     "2p": ("2", "proposed"),
 }
-ROUTE_CHOICES = (*ROUTES, *ASSIGNMENTS, "free")
+ROUTE_CHOICES = (*ROUTES, *ASSIGNMENTS, "free", "practice")
 ASSIGNMENT_MENU = """본 실험 배정 조건:
   1b: 경로 1 · 수동 (baseline)
   1p: 경로 1 · 반자동 (proposed)
   2b: 경로 2 · 수동 (baseline)
   2p: 경로 2 · 반자동 (proposed)
-연습: test = 40초 연습 / free = 시간 제한 없는 자유 체험"""
+연습: practice = 전극 조작 반복 연습 / test = 40초 연습 / free = 진동 자유 체험"""
 CONDITIONS = {"b": "baseline", "baseline": "baseline", "p": "proposed", "proposed": "proposed"}
 
 
@@ -34,10 +34,10 @@ def parser():
     ap = argparse.ArgumentParser(
         prog="bash run",
         description="장갑 실험 실행: 생략한 항목은 실행 후 입력합니다.",
-        epilog="예: bash run | bash run 1p | bash run 1 b P01 01 | bash run test | bash run free",
+        epilog="예: bash run | bash run 1p | bash run practice | bash run practice p | bash run test | bash run free",
     )
     ap.add_argument("route", nargs="?", type=str.lower, choices=ROUTE_CHOICES,
-                    help="배정: 1b / 1p / 2b / 2p, 경로만 선택: 1 / 2, 연습: test / free")
+                    help="배정: 1b / 1p / 2b / 2p, 경로만 선택: 1 / 2, 연습: practice / test / free")
     ap.add_argument("condition", nargs="?", type=str.lower, choices=CONDITIONS,
                     help="b: 수동, p: 자동 점등·취소")
     ap.add_argument("participant", nargs="?", type=identifier, help="참가자 코드 (예: P01)")
@@ -82,7 +82,7 @@ def resolve_arguments(args):
             route = ask_choice("검사할 경로 [1 / 2]: ", ("1", "2"))
         else:
             print(ASSIGNMENT_MENU, flush=True)
-            route = ask_choice("배정 조건 또는 연습 선택: ", (*ASSIGNMENTS, "test", "free"))
+            route = ask_choice("배정 조건 또는 연습 선택: ", (*ASSIGNMENTS, "practice", "test", "free"))
     condition = args.condition
     if route in ASSIGNMENTS:
         if condition is not None:
@@ -93,6 +93,11 @@ def resolve_arguments(args):
             raise ValueError("free는 방식·참가자·시행 또는 --validate 없이 사용하세요. 예: bash run free")
         return ["--free"] + [flag for flag in ("--simulate", "--verbose")
                              if getattr(args, flag[2:])]
+    if route == "practice":
+        if args.validate or args.videos or args.participant or args.trial:
+            raise ValueError("practice는 본 실험 정보·영상 없이 사용하세요. 예: bash run practice 또는 bash run practice p")
+        return ["--practice", "--condition", CONDITIONS[condition or "b"]] + [
+            flag for flag in ("--simulate", "--verbose") if getattr(args, flag[2:])]
     result = ["--route", str(ROOT / "routes" / ROUTES[route])]
     if args.validate:
         return result + ["--validate"]

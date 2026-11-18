@@ -15,7 +15,7 @@ FIELDS = ("utc_time", "elapsed_s", "received_monotonic_s", "participant", "trial
 
 SIDE_NAMES = {"left": "왼쪽", "right": "오른쪽"}
 CONDITION_NAMES = {"baseline": "Baseline · 수동 점등", "proposed": "Proposed · 자동 점등/취소",
-                   "free": "자유 체험 (시간 제한 없음)"}
+                   "free": "자유 체험 (시간 제한 없음)", "practice": "전극 조작 연습 (본 실험 아님)"}
 INPUT_REASONS = {
     "duplicate_state": "이미 같은 접촉 상태여서 새 입력이 아님",
     "trial_not_running": "실험 진행 중이 아님",
@@ -101,6 +101,26 @@ def format_experiment_event(row):
             category, message = "진동", f"{hand}점등 피드백 진동 시작"
         else:
             return None
+    elif event == "practice_ready":
+        category, message = "연습", "준비 완료 (READY) · 전극을 떼고 1(왼쪽)/2(오른쪽) 입력 · b 수동 / p 반자동"
+    elif event == "practice_mode":
+        mode = "수동: 접촉으로 켜고, 떼었다 다시 접촉해 끄기" if row["condition"] == "baseline" else "반자동: 자동 점등 전에 접촉해 취소 / 가만히 있으면 점등"
+        category, message = "연습", f"방식 선택 · {mode} · 1/2로 회차 시작"
+    elif event == "practice_round_begin":
+        instruction = "사전 진동 뒤 전극으로 점등·소등" if row["condition"] == "baseline" else f"사전 진동 뒤 {details['auto_on_s']:g}초 전 접촉하면 취소"
+        category, message = "연습", f"{hand}회차 시작 · {instruction} · {details['pass_s']:g}초에 통과·자동 소등"
+    elif event == "practice_round_end":
+        category, message = "연습", f"{hand}통과·자동 소등 · 회차 종료 · 1/2/r로 다시 연습"
+    elif event == "practice_round_stopped":
+        category, message = "연습", f"현재 회차 중단 · {reason}"
+    elif event == "practice_note":
+        category, message = "연습", str(details)
+    elif event == "practice_error":
+        category, message = "오류", f"전극 연습 중단 · {reason}"
+    elif event == "practice_closed":
+        category, message = "종료", "전극 연습 종료 · 연습 로그 저장 완료"
+        if row.get("result") != "completed":
+            message += f" · 중단 사유: {reason}"
     elif event == "free_ready":
         category, message = "체험", "준비 완료 (READY) · 1/2 사전 안내 · 3/4 점등 · 0 끄기 · q 종료"
     elif event == "free_indicator_on":
