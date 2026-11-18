@@ -50,8 +50,9 @@ def configuration(settings, route):
     c.setdefault("max_desync_s", 0.2)
     c.setdefault("max_clock_error_s", 0.2)
     c.setdefault("max_sample_rtt_s", 0.1)
+    c.setdefault("sync_fault_after_s", 2.0)
     for name in ("prepare_timeout_s", "command_timeout_s", "start_timeout_s", "poll_s", "max_desync_s",
-                 "max_clock_error_s", "max_sample_rtt_s"):
+                 "max_clock_error_s", "max_sample_rtt_s", "sync_fault_after_s"):
         value = c[name]
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0:
             raise ValueError(f"video.{name} must be a finite positive number")
@@ -120,13 +121,58 @@ class Sample:
         return self.position + (when - self.at if not self.paused and not self.eof else 0)
 
 
-def check_samples(samples, now, origin, duration, config):
+class SyncGuard:
+    """Allow transient timing excursions; keep one continuous observation window."""
+    def __init__(self, seconds, log):
+        self.seconds, self.log = seconds, log
+        self.since = None
+        self.peaks = {}
+        self.failed = False
+
+    def update(self, issues, now):
+        if not issues:
+            if self.since is not None:
+                self.log.write("video_sync_recovered", received=now,
+                               details={"duration_s": now - self.since, "peaks_s": dict(self.peaks)})
+            self.since = None
+            self.peaks.clear()
+            return
+        first = self.since is None
+        if first:
+            self.since = now
+        for key, issue in issues.items():
+            self.peaks[key] = max(self.peaks.get(key, 0), abs(issue["value_s"]))
+        reason = "; ".join(issue["reason"] for issue in issues.values())
+        if first:
+            self.log.write("video_sync_warning", received=now, reason=reason,
+                           details={"issues": issues, "grace_s": self.seconds})
+        elapsed = now - self.since
+        if elapsed >= self.seconds:
+            self.failed = True
+            self.log.write("video_sync_persistent", received=now, reason=reason,
+                           details={"duration_s": elapsed, "peaks_s": dict(self.peaks), "issues": issues})
+            raise RuntimeError(f"시간 차이 또는 조회 지연이 {elapsed:.2f}초 연속 지속: {reason}")
+
+    def finish(self, now):
+        if self.since is not None and not self.failed:
+            self.log.write("video_sync_unresolved", received=now,
+                           details={"duration_s": now - self.since, "peaks_s": dict(self.peaks)})
+
+
+def check_samples(samples, now, origin, duration, config, guard=None):
     positions = {}
+    issues = {}
+    reliable = {}
     for role, sample in samples.items():
         if not math.isfinite(sample.position) or sample.position < 0:
             raise RuntimeError(f"{role}: invalid video position")
-        if sample.rtt > config["max_sample_rtt_s"]:
-            raise RuntimeError(f"{role}: video position response delayed ({sample.rtt:.3f}s)")
+        if not all(math.isfinite(v) for v in (sample.at, sample.rtt, sample.speed)) or sample.rtt < 0:
+            raise RuntimeError(f"{role}: invalid video timing sample")
+        reliable[role] = sample.rtt <= config["max_sample_rtt_s"]
+        label = "내비" if role == "navigation" else "주행"
+        if not reliable[role]:
+            issues[f"{role}_rtt"] = {"value_s": sample.rtt,
+                "reason": f"{label}: 재생 위치 조회 지연 {sample.rtt:.3f}초"}
         # EOF can land one video frame before the container duration.
         ending = (sample.eof and sample.position >= duration - 0.1
                   and now - origin >= duration - 0.1)
@@ -136,14 +182,19 @@ def check_samples(samples, now, origin, duration, config):
             raise RuntimeError(f"{role}: 영상 정지 또는 조기 종료 감지")
         positions[role] = sample.position_at(now)
         error = positions[role] - (now - origin)
-        if abs(error) > config["max_clock_error_s"]:
-            raise RuntimeError(f"{role}: 실험 시간과 영상 차이 {error:+.3f}초")
+        if reliable[role] and abs(error) > config["max_clock_error_s"]:
+            issues[f"{role}_clock"] = {"value_s": error,
+                "reason": f"{label}: 실험 시간과 영상 차이 {error:+.3f}초"}
     skew = positions["driving"] - positions["navigation"]
-    if abs(skew) > config["max_desync_s"]:
-        raise RuntimeError(f"두 영상의 재생 시각 차이 {skew:+.3f}초")
+    if all(reliable.values()) and abs(skew) > config["max_desync_s"]:
+        issues["video_skew"] = {"value_s": skew, "reason": f"두 영상의 재생 시각 차이 {skew:+.3f}초"}
+    if guard is not None:
+        guard.update(issues, now)
+    elif issues:
+        raise RuntimeError(next(iter(issues.values()))["reason"])
     return dict(navigation_s=positions["navigation"], driving_s=positions["driving"],
                 experiment_s=now - origin, driving_minus_navigation_s=skew,
-                samples={r: vars(s) for r, s in samples.items()})
+                samples={r: vars(s) for r, s in samples.items()}, timing_issues=issues)
 
 
 class MpvClient:
@@ -332,6 +383,7 @@ class VideoPair:
         self.closing = False
         self.last_record = -float("inf")
         self.displays = None
+        self.sync_guard = SyncGuard(self.config["sync_fault_after_s"], log)
 
     async def prepare(self):
         for role, player in self.players.items():
@@ -345,7 +397,9 @@ class VideoPair:
                            "audio": self.config["audio"][role], "hwdec": self.config["hwdec"],
                            "mpv_log": str(self.log_paths[role]) if self.log_paths[role] is not None else None,
                            **info})
-        self.log.write("video_ready", details={"hwdec": self.config["hwdec"], "gpu_api": "opengl"})
+        self.log.write("video_ready", details={"hwdec": self.config["hwdec"], "gpu_api": "opengl",
+                       "sync_policy": {k: self.config[k] for k in
+                           ("max_clock_error_s", "max_desync_s", "max_sample_rtt_s", "sync_fault_after_s")}})
 
     @staticmethod
     def _hash(path):
@@ -384,9 +438,14 @@ class VideoPair:
             if all(not s.paused and s.position > 0 for s in samples.values()):
                 nav = samples["navigation"]
                 origin = nav.at - nav.position
-                if origin < requested - self.config["max_clock_error_s"]:
-                    raise RuntimeError("영상 시작 시각 추정이 요청 시각보다 앞섭니다.")
-                details = check_samples(samples, time.monotonic(), origin, self.duration, self.config)
+                if (nav.rtt > self.config["max_sample_rtt_s"]
+                        or origin < requested - self.config["max_clock_error_s"]):
+                    # Do not establish the experiment clock from a slow initial
+                    # query. Retry within the existing startup timeout.
+                    await asyncio.sleep(0.02)
+                    continue
+                details = check_samples(samples, time.monotonic(), origin, self.duration,
+                                        self.config, self.sync_guard)
                 self.origin = origin
                 self.log.write("video_started", details={"estimated_origin_monotonic_s": origin,
                                "request_monotonic_s": requested, **details})
@@ -400,7 +459,7 @@ class VideoPair:
             while True:
                 samples = await self.samples()
                 now = time.monotonic()
-                details = check_samples(samples, now, self.origin, self.duration, self.config)
+                details = check_samples(samples, now, self.origin, self.duration, self.config, self.sync_guard)
                 if now - self.last_record >= 1:
                     await self.check_displays()
                     self.log.write("video_sync_sample", details=details)
@@ -420,6 +479,7 @@ class VideoPair:
         if self.monitor_task:
             self.monitor_task.cancel()
             await asyncio.gather(self.monitor_task, return_exceptions=True)
+        self.sync_guard.finish(time.monotonic())
         results = await asyncio.gather(*(p.close() for p in self.players.values()), return_exceptions=True)
         errors = [str(r) for r in results if isinstance(r, BaseException)]
         if errors:

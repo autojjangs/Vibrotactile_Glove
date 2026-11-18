@@ -9,7 +9,7 @@ from .config import load_settings
 from .engine import Engine
 from .free_practice import FreeControls
 from .led import LedOutput
-from .logging import EventLog
+from .logging import EventLog, INPUT_REASONS
 from .transport import BleTransport, SimTransport
 
 HELP = """숫자/문자 입력 후 Enter:
@@ -47,13 +47,43 @@ class PracticeControls:
         self.pending = []
         self.count = 0
         self.last_side = None
+        self.display_message = "전극을 떼고 연습할 손을 선택하세요."
 
     def write(self, event, **fields):
         # Preserve the actual condition on rule events while the session remains
         # explicitly marked CONTACT_PRACTICE / scored=false in its metadata.
         if event == "point_pass":
             event = "practice_round_end"
+        if event == "input" and fields.get("input") == "contact":
+            side = "왼쪽" if fields.get("side") == "left" else "오른쪽"
+            result = fields.get("result")
+            message = {"on": "접촉 인식 · 방향지시등 켜짐", "off": "접촉 인식 · 방향지시등 꺼짐",
+                       "cancel": "접촉 인식 · 자동 점등 취소"}.get(result)
+            if message is None:
+                message = "접촉 인식 · " + INPUT_REASONS.get(fields.get("reason"), "현재 입력 대기 중")
+            self.display_message = f"{side} {message}"
+        elif event == "practice_round_begin":
+            self.display_message = "먼저 사전 안내 진동을 느껴 보세요."
+        elif event == "practice_round_end":
+            self.display_message = "회차 완료 · 양쪽 전극을 떼고 다시 연습하세요."
+        elif event == "auto_on":
+            self.display_message = "자동으로 켜졌어요. 점등 피드백 진동을 느껴 보세요."
+        elif event == "auto_suppressed":
+            self.display_message = "취소가 유지되고 있어요. 이번 회차에는 켜지지 않아요."
+        elif event == "practice_mode":
+            self.display_message = "방식을 선택했어요. 왼쪽 또는 오른쪽 연습을 시작하세요."
+        elif event == "practice_note":
+            self.display_message = str(fields.get("details", ""))
         self.log.write(event, condition=self.engine.condition, **fields)
+
+    def view_state(self):
+        point = self.engine.active
+        return dict(condition=self.engine.condition, active=point is not None,
+                    side=point["direction"] if point else self.last_side,
+                    allowed=self.engine.allowed, lit=self.engine.lit, cancelled=self.engine.cancelled,
+                    contacts=dict(self.engine.contact), message=self.display_message,
+                    elapsed_s=max(0, time.monotonic() - point["preview_s"]) if point else 0,
+                    **self.config)
 
     async def apply(self, effects):
         for kind, side, value in effects:
@@ -140,6 +170,7 @@ async def run(args, start_reader):
 
     led = LedOutput(settings, args.simulate, log, fault)
     controls = PracticeControls(transport, led, log, args.condition, config)
+    window = display_task = None
     exit_code, reason = 0, "quit"
     try:
         log.snapshot(settings, {"route_id": "CONTACT_PRACTICE", "scored": False,
@@ -148,6 +179,20 @@ async def run(args, start_reader):
         log.write("session_open", details={"simulation": args.simulate})
         led.initialize()
         await transport.connect()
+        if args.practice_window:
+            from .practice_window import PracticeWindow
+            window = PracticeWindow(queue)
+            await window.open()
+            async def display():
+                try:
+                    while True:
+                        await window.publish(controls.view_state())
+                        await asyncio.sleep(0.1)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    fault(f"연습 창 통신 오류: {error}")
+            display_task = asyncio.create_task(display())
         log.write("practice_ready")
         controls.write("practice_mode")
         print(f"로그 폴더: {log.directory}\n{HELP}", flush=True)
@@ -198,6 +243,9 @@ async def run(args, start_reader):
         log.write("practice_error", reason=reason)
         print(f"전극 연습 중단: {reason}", file=sys.stderr, flush=True)
     finally:
+        if display_task:
+            display_task.cancel()
+            await asyncio.gather(display_task, return_exceptions=True)
         controls.pending.clear()
         controls.engine.running = False
         controls.engine.allowed = False
@@ -211,6 +259,12 @@ async def run(args, start_reader):
         except Exception as error:
             exit_code = 2
             log.write("shutdown_ble_error", reason=str(error))
+        if window:
+            try:
+                await window.close()
+            except Exception as error:
+                exit_code = 2
+                log.write("practice_error", reason=f"연습 창 종료 오류: {error}")
         while not queue.empty():
             kind, value, received = queue.get_nowait()
             if kind == "packet":

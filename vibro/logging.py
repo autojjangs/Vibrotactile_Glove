@@ -37,7 +37,7 @@ ERROR_EVENTS = {
 DETAIL_EVENTS = {
     "ble_rx", "ble_command", "sim_rx", "sim_command", "sim_hold",
     "timeline_event", "preview_requested", "led_driver_on", "led_driver_off",
-    "operator_input", "video_sync_sample", "video_file_ready",
+    "operator_input", "video_sync_sample", "video_file_ready", "video_sync_persistent",
 }
 
 
@@ -159,6 +159,12 @@ def format_experiment_event(row):
         category, message = "영상", f"재생 시작 확인 · 주행−내비 재생 시각 차이 {details.get('driving_minus_navigation_s', 0):+.3f}초"
     elif event == "video_fault":
         category, message = "오류", f"영상 재생 중단 · {reason}"
+    elif event == "video_sync_warning":
+        category, message = "영상", f"시간 확인 · {reason} · {details['grace_s']:g}초 미만이면 계속 진행"
+    elif event == "video_sync_recovered":
+        category, message = "영상", f"시간 차이·조회 지연 회복 ({details['duration_s']:.2f}초) · 계속 진행"
+    elif event == "video_sync_unresolved":
+        category, message = "영상", f"종료 시 시간 차이·조회 지연 회복 미확인 ({details['duration_s']:.2f}초) · 기록 확인 필요"
     elif event == "video_closed":
         category, message = "영상", "두 영상 종료"
     elif event == "video_cue_marker":

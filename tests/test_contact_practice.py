@@ -126,6 +126,7 @@ class ContactControlsTest(unittest.IsolatedAsyncioTestCase):
         point = self.controls.engine.active
         await self.controls.advance(point["auto_on_s"])
         self.assertEqual(self.led.direction, "right")
+        self.assertIn("자동으로 켜졌어요", self.controls.view_state()["message"])
         await self.touch("right", False)
         await self.touch("right", True)
         self.assertEqual(self.inputs()[-1]["reason"], "after_automatic_on")
@@ -160,6 +161,19 @@ class ContactControlsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.led.direction)
         self.assertFalse(any(r["event"] == "auto_on" for r in self.log.rows))
         self.assertIsNone(self.controls.engine.active)
+
+    async def test_window_state_keeps_action_result_visible_after_release(self):
+        await self.controls.command("1")
+        await self.drain()
+        await self.touch("left", True)
+        state = self.controls.view_state()
+        self.assertTrue(state["contacts"]["left"])
+        self.assertTrue(state["lit"])
+        self.assertIn("켜짐", state["message"])
+        await self.touch("left", False)
+        state = self.controls.view_state()
+        self.assertFalse(state["contacts"]["left"])
+        self.assertIn("켜짐", state["message"])
 
 
 class ContactEntryTest(unittest.IsolatedAsyncioTestCase):

@@ -47,6 +47,7 @@ def parser():
     mode.add_argument("--validate", action="store_true", help="시간표와 설정만 검사")
     mode.add_argument("--scan", action="store_true", help="BLE 장갑 검색만 실행")
     ap.add_argument("--verbose", action="store_true", help="상세 통신 로그 표시")
+    ap.add_argument("--terminal", action="store_true", help="practice를 별도 창 없이 터미널에서 사용")
     media = ap.add_mutually_exclusive_group()
     media.add_argument("--videos", action="store_true", help="모의 실행에서도 실제 영상 표시")
     media.add_argument("--no-video", action="store_true", help="영상 없이 장비만 점검")
@@ -73,6 +74,8 @@ def ask_identifier(prompt, default=None):
 
 
 def resolve_arguments(args):
+    if args.terminal and (args.scan or args.route not in (None, "practice")):
+        raise ValueError("--terminal은 practice에서만 사용하세요.")
     if args.scan:
         return ["--scan"]
 
@@ -84,6 +87,8 @@ def resolve_arguments(args):
             print(ASSIGNMENT_MENU, flush=True)
             route = ask_choice("배정 조건 또는 연습 선택: ", (*ASSIGNMENTS, "practice", "test", "free"))
     condition = args.condition
+    if args.terminal and route != "practice":
+        raise ValueError("--terminal은 practice에서만 사용하세요.")
     if route in ASSIGNMENTS:
         if condition is not None:
             raise ValueError("배정 코드에 방식이 포함되어 있습니다. 예: bash run 1p (방식 생략)")
@@ -96,7 +101,7 @@ def resolve_arguments(args):
     if route == "practice":
         if args.validate or args.videos or args.participant or args.trial:
             raise ValueError("practice는 본 실험 정보·영상 없이 사용하세요. 예: bash run practice 또는 bash run practice p")
-        return ["--practice", "--condition", CONDITIONS[condition or "b"]] + [
+        return ["--practice", "--condition", CONDITIONS[condition or "b"]] + ([] if args.terminal else ["--practice-window"]) + [
             flag for flag in ("--simulate", "--verbose") if getattr(args, flag[2:])]
     result = ["--route", str(ROOT / "routes" / ROUTES[route])]
     if args.validate:

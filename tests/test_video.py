@@ -75,12 +75,14 @@ class VideoSelectionTest(unittest.TestCase):
             self.assertEqual(paths["navigation"], root / "n.mp4")
             self.assertEqual(config["audio"], {"navigation": True, "driving": True})
             self.assertEqual(config["hwdec"], "no")
+            self.assertEqual(config["sync_fault_after_s"], 2.0)
             for mode in ("no", "auto", "auto-copy"):
                 configured, _ = video.configuration({"video": settings["video"] | {"hwdec": mode}}, route)
                 self.assertEqual(configured["hwdec"], mode)
             for change in ({"screens": {"navigation": 0, "driving": 0}},
                            {"poll_s": float("nan")}, {"max_desync_s": 0},
-                           {"hwdec": True}, {"hwdec": "unknown"}):
+                           {"hwdec": True}, {"hwdec": "unknown"}, {"sync_fault_after_s": 0},
+                           {"sync_fault_after_s": True}, {"sync_fault_after_s": float("inf")}):
                 with self.subTest(change=change), self.assertRaises(ValueError):
                     video.configuration({"video": settings["video"] | change}, route)
             with self.assertRaises(FileNotFoundError):
@@ -202,6 +204,7 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
                 await pair.close()
 
     async def test_monitor_fault_pauses_both_players(self):
+        self.settings["video"]["sync_fault_after_s"] = 0.15
         with patch.object(video, "MpvClient", FakePlayer):
             pair = video.VideoPair(self.settings, self.route, self.log, self.faults.append)
             try:
@@ -211,8 +214,90 @@ class VideoPairTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(pair.monitor_task, 1)
                 self.assertEqual(len(self.faults), 1)
                 self.assertTrue(all(p.paused for p in pair.players.values()))
+                self.assertEqual(sum(r["event"] == "video_sync_warning" for r in self.log.rows), 1)
+                self.assertTrue(any(r["event"] == "video_sync_persistent" for r in self.log.rows))
             finally:
                 await pair.close()
+
+    async def test_monitor_recovers_without_pausing_or_changing_origin(self):
+        self.settings["video"]["poll_s"] = 0.01
+        with patch.object(video, "MpvClient", FakePlayer):
+            pair = video.VideoPair(self.settings, self.route, self.log, self.faults.append)
+            try:
+                await pair.prepare()
+                origin = await pair.start()
+                pair.players["navigation"].started -= 0.4
+                await asyncio.sleep(0.06)
+                self.assertTrue(any(r["event"] == "video_sync_warning" for r in self.log.rows))
+                pair.players["navigation"].started += 0.4
+                await asyncio.sleep(0.06)
+                self.assertTrue(any(r["event"] == "video_sync_recovered" for r in self.log.rows))
+                self.assertEqual(pair.origin, origin)
+                self.assertEqual(self.faults, [])
+                self.assertFalse(any(p.paused for p in pair.players.values()))
+                self.assertFalse(pair.monitor_task.done())
+            finally:
+                await pair.close()
+
+
+class SyncGuardTest(unittest.TestCase):
+    def setUp(self):
+        self.log = MemoryLog()
+        self.guard = video.SyncGuard(2, self.log)
+
+    def check(self, now, nav_error=0, drive_error=0, **fields):
+        rows = {"navigation": sample(now - 100 + nav_error, now, **fields),
+                "driving": sample(now - 100 + drive_error, now)}
+        return video.check_samples(rows, now, 100, 20, CONFIG, self.guard)
+
+    def test_transient_excursion_recovers_and_repeated_incidents_do_not_accumulate(self):
+        for now in (102, 105, 108):
+            self.check(now, nav_error=-0.4)
+            self.check(now + 1.9, nav_error=-0.4)
+            self.check(now + 1.95)
+        self.assertEqual([r["event"] for r in self.log.rows],
+                         ["video_sync_warning", "video_sync_recovered"] * 3)
+        self.assertIsNone(self.guard.since)
+
+    def test_persistent_clock_error_aborts_at_two_seconds_and_logs_peak(self):
+        self.check(102, nav_error=-0.8)
+        self.check(103.99, nav_error=-0.3)
+        with self.assertRaisesRegex(RuntimeError, "2.00초 연속 지속"):
+            self.check(104, nav_error=-0.3)
+        self.assertAlmostEqual(self.log.rows[-1]["details"]["peaks_s"]["navigation_clock"], 0.8)
+
+    def test_both_videos_stalling_together_is_not_hidden_by_zero_cross_skew(self):
+        self.check(102, nav_error=-0.4, drive_error=-0.4)
+        with self.assertRaisesRegex(RuntimeError, "실험 시간과 영상 차이"):
+            self.check(104, nav_error=-0.4, drive_error=-0.4)
+
+    def test_cross_video_skew_and_alternating_faults_share_continuous_window(self):
+        first = self.check(102, nav_error=-0.15, drive_error=0.15)
+        self.assertEqual(set(first["timing_issues"]), {"video_skew"})
+        self.check(103, nav_error=-0.4)
+        with self.assertRaises(RuntimeError):
+            self.check(104, drive_error=-0.4)
+
+    def test_slow_query_is_retryable_and_not_used_as_reliable_drift_measurement(self):
+        result = self.check(102, nav_error=-0.8, rtt=0.3)
+        self.assertEqual(set(result["timing_issues"]), {"navigation_rtt"})
+        self.check(102.5)
+        self.assertIsNone(self.guard.since)
+        self.check(103, rtt=0.3)
+        with self.assertRaisesRegex(RuntimeError, "조회 지연"):
+            self.check(105, rtt=0.3)
+
+    def test_fatal_playback_changes_are_immediate_even_during_grace(self):
+        self.check(102, nav_error=-0.4)
+        for fields in ({"paused": True}, {"seeking": True}, {"eof": True}, {"speed": 1.2},
+                       {"speed": float("nan")}, {"rtt": float("nan")}):
+            with self.subTest(fields=fields), self.assertRaises(RuntimeError):
+                self.check(102.1, **fields)
+
+    def test_close_before_recovery_does_not_claim_recovered(self):
+        self.check(102, nav_error=-0.3)
+        self.guard.finish(102.5)
+        self.assertEqual(self.log.rows[-1]["event"], "video_sync_unresolved")
 
 
 class MpvLaunchTest(unittest.IsolatedAsyncioTestCase):
